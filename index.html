@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>AI Minimalist Music</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.json">
+    <style>
+        :root {
+            --bg: #f5f5f5; --card: #ffffff; --text: #333333;
+            --text-light: #999999; --border: #e0e0e0; --accent: #888888;
+        }
+        body.dark-mode {
+            --bg: #121212; --card: #1e1e1e; --text: #e0e0e0;
+            --text-light: #777777; --border: #333333; --accent: #aaaaaa;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            background-color: var(--bg); color: var(--text);
+            font-family: -apple-system, system-ui, sans-serif;
+            margin: 0; display: flex; justify-content: center;
+            height: 100vh; transition: all 0.5s ease; overflow: hidden;
+        }
+        .app-container {
+            width: 100%; max-width: 500px; background: var(--card);
+            padding: env(safe-area-inset-top) 25px env(safe-area-inset-bottom);
+            display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+        }
+        /* 顶部控制 */
+        .top-nav { display: flex; justify-content: space-between; padding: 15px 0; font-size: 0.75rem; color: var(--text-light); }
+        .clickable { cursor: pointer; text-transform: uppercase; letter-spacing: 1px; }
+        
+        /* 搜索区域 */
+        .search-box { display: flex; gap: 10px; margin-bottom: 15px; }
+        input { flex: 1; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); outline: none; }
+        button { padding: 0 20px; background: var(--text); color: var(--card); border: none; border-radius: 10px; cursor: pointer; }
+
+        /* 标签与结果 */
+        .tags { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; }
+        .tag { padding: 4px 12px; border: 1px solid var(--border); border-radius: 20px; font-size: 0.7rem; white-space: nowrap; }
+        .tag.active { background: var(--text); color: var(--card); }
+        #results { max-height: 150px; overflow-y: auto; font-size: 0.9rem; }
+        .song-item { padding: 12px 0; border-bottom: 1px solid var(--border); }
+
+        /* 歌词区 */
+        #lyrics-box {
+            flex: 1; overflow-y: hidden; margin: 20px 0; text-align: center;
+            mask-image: linear-gradient(to bottom, transparent, black 20%, black 80%, transparent);
+            -webkit-mask-image: linear-gradient(to bottom, transparent, black 20%, black 80%, transparent);
+        }
+        .lyric-line { padding: 10px 0; color: var(--text-light); transition: all 0.3s; font-size: 0.95rem; }
+        .lyric-line.active { color: var(--text); font-weight: bold; transform: scale(1.1); }
+
+        /* AI 助理 */
+        .ai-card { background: var(--bg); border-radius: 15px; padding: 15px; margin-bottom: 20px; }
+        .ai-header { display: flex; justify-content: space-between; font-size: 0.7rem; font-weight: bold; margin-bottom: 8px; color: var(--accent); }
+        #ai-text { font-size: 0.85rem; line-height: 1.6; font-style: italic; }
+
+        /* 播放器 */
+        .player { padding-bottom: 30px; text-align: center; }
+        audio { width: 100%; filter: grayscale(1); margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="app-container" id="mainContainer">
+        <div class="top-nav">
+            <span class="clickable" onclick="toggleTheme()" id="themeBtn">🌙 DARK</span>
+            <select id="langSelect" onchange="changeLang(this.value)" style="background:none; border:none; color:inherit; outline:none;">
+                <option value="zh-CN">简体中文</option>
+                <option value="en">English</option>
+                <option value="ja">日本語</option>
+            </select>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="songInput" placeholder="搜索音乐...">
+            <button onclick="searchMusic()">GO</button>
+        </div>
+
+        <div class="tags" id="tagList"></div>
+        <div id="results"></div>
+
+        <div id="lyrics-box"><div id="lyric-wrapper"></div></div>
+
+        <div class="ai-card">
+            <div class="ai-header">
+                <span>AI ASSISTANT</span>
+                <div id="personaBtns">
+                    <span class="clickable" onclick="setPersona('poet')">诗人</span> | 
+                    <span class="clickable" onclick="setPersona('scholar')">学者</span>
+                </div>
+            </div>
+            <div id="ai-text">请搜索歌曲，我将为您深度解析。</div>
+        </div>
+
+        <div class="player">
+            <div id="trackInfo" style="font-size: 0.8rem; margin-bottom: 5px;">Music is Life</div>
+            <audio id="audioPlayer" controls></audio>
+        </div>
+    </div>
+
+    <script src="locales.js"></script>
+    <script>
+        let currentLang = 'zh-CN';
+        let currentPersona = 'poet';
+        let userPrefs = ['治愈'];
+        let currentLyrics = [];
+
+        // 初始化
+        function init() {
+            const tagList = document.getElementById('tagList');
+            ['治愈', '深夜', '孤独', '热血'].forEach(t => {
+                const s = document.createElement('span');
+                s.className = 'tag' + (userPrefs.includes(t)?' active':'');
+                s.innerText = t;
+                s.onclick = () => { s.classList.toggle('active'); updatePrefs(); };
+                tagList.appendChild(s);
+            });
+            initTheme();
+        }
+
+        function updatePrefs() {
+            userPrefs = Array.from(document.querySelectorAll('.tag.active')).map(el => el.innerText);
+        }
+
+        // 搜索与播放
+        async function searchMusic() {
+            const kw = document.getElementById('songInput').value;
+            if(!kw) return;
+            const resBox = document.getElementById('results');
+            resBox.innerHTML = "Searching...";
+            
+            try {
+                const resp = await fetch(`https://netease-cloud-music-api-demo.vercel.app/search?keywords=${kw}`);
+                const data = await resp.json();
+                resBox.innerHTML = '';
+                data.result.songs.forEach(s => {
+                    const div = document.createElement('div');
+                    div.className = 'song-item';
+                    div.innerHTML = `<strong>${s.name}</strong> - ${s.artists[0].name}`;
+                    div.onclick = () => playSong(s.id, s.name, s.artists[0].name);
+                    resBox.appendChild(div);
+                });
+            } catch(e) { resBox.innerHTML = "Error loading music."; }
+        }
+
+        async function playSong(id, name, artist) {
+            document.getElementById('trackInfo').innerText = `${name} - ${artist}`;
+            document.getElementById('results').innerHTML = '';
+            const player = document.getElementById('audioPlayer');
+            player.src = `https://music.163.com/song/media/outer/url?id=${id}.mp3`;
+            player.play();
+            
+            fetchLyrics(id, name);
+            getAIComment(name);
+            startBreathing();
+        }
+
+        // 歌词逻辑
+        async function fetchLyrics(id, name) {
+            const resp = await fetch(`https://netease-cloud-music-api-demo.vercel.app/lyric?id=${id}`);
+            const data = await resp.json();
+            const lrc = data.lrc ? data.lrc.lyric : `[00:00.00]${name}\n[00:02.00]纯音乐，请欣赏`;
+            parseAndRenderLRC(lrc);
+        }
+
+        function parseAndRenderLRC(lrc) {
+            const lines = lrc.split('\n');
+            currentLyrics = [];
+            const wrapper = document.getElementById('lyric-wrapper');
+            wrapper.innerHTML = '';
+            lines.forEach((line, i) => {
+                const match = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/.exec(line);
+                if(match) {
+                    const time = parseInt(match[1])*60 + parseInt(match[2]);
+                    const text = line.replace(/\[.*\]/, '').trim();
+                    if(text) {
+                        currentLyrics.push({time, text});
+                        const p = document.createElement('div');
+                        p.className = 'lyric-line';
+                        p.id = `lrc-${currentLyrics.length-1}`;
+                        p.innerText = text;
+                        wrapper.appendChild(p);
+                    }
+                }
+            });
+        }
+
+        document.getElementById('audioPlayer').ontimeupdate = function() {
+            const time = Math.floor(this.currentTime);
+            const index = currentLyrics.findIndex((l, i) => time >= l.time && (!currentLyrics[i+1] || time < currentLyrics[i+1].time));
+            if(index !== -1) {
+                document.querySelectorAll('.lyric-line').forEach(el => el.classList.remove('active'));
+                const activeLine = document.getElementById(`lrc-${index}`);
+                if(activeLine) {
+                    activeLine.classList.add('active');
+                    const container = document.getElementById('lyrics-box');
+                    container.scrollTo({top: activeLine.offsetTop - container.clientHeight/2, behavior: 'smooth'});
+                }
+            }
+        };
+
+        // 其他功能
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+            const isDark = document.body.classList.contains('dark-mode');
+            document.getElementById('themeBtn').innerText = isDark ? "☀️ LIGHT" : "🌙 DARK";
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        }
+
+        function initTheme() {
+            if(localStorage.getItem('theme') === 'dark') toggleTheme();
+        }
+
+        function startBreathing() {
+            const container = document.getElementById('mainContainer');
+            let i = 0;
+            setInterval(() => {
+                i += 0.05;
+                const op = 0.05 + (Math.sin(i) * 0.05 + 0.05);
+                container.style.boxShadow = `0 10px 40px rgba(0,0,0,${op})`;
+            }, 50);
+        }
+
+        init();
+    </script>
+</body>
+</html>
