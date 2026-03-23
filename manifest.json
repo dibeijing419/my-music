@@ -1,0 +1,9 @@
+{
+  "name": "AI Gray Music",
+  "short_name": "GrayMusic",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#f5f5f5",
+  "theme_color": "#ffffff",
+  "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/3844/3844720.png", "sizes": "512x512", "type": "image/png" }]
+}
